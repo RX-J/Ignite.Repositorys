@@ -1,0 +1,91 @@
+using System;
+using System.Runtime.InteropServices;
+
+class Program
+{
+    // Struktur für die Koordinaten der Mausposition
+    [StructLayout(LayoutKind.Sequential)]
+    public struct POINT
+    {
+        public int X;
+        public int Y;
+    }
+
+    // Struktur für die Monitorinformationen
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
+    public class MONITORINFO
+    {
+        public int cbSize = Marshal.SizeOf(typeof(MONITORINFO));
+        public RECT rcMonitor = new RECT();
+        public RECT rcWork = new RECT();
+        public int dwFlags = 0;
+    }
+
+    // Struktur für Rechtecke (wird für den Monitor verwendet)
+    [StructLayout(LayoutKind.Sequential)]
+    public struct RECT
+    {
+        public int left;
+        public int top;
+        public int right;
+        public int bottom;
+    }
+
+    // Import der GetCursorPos-Funktion aus der User32.dll
+    [DllImport("user32.dll")]
+    public static extern bool GetCursorPos(out POINT lpPoint);
+
+    // Import der MonitorFromPoint-Funktion aus der User32.dll
+    [DllImport("user32.dll")]
+    public static extern IntPtr MonitorFromPoint(POINT pt, uint dwFlags);
+
+    // Import der GetMonitorInfo-Funktion aus der User32.dll
+    [DllImport("user32.dll", CharSet = CharSet.Auto)]
+    public static extern bool GetMonitorInfo(IntPtr hMonitor, MONITORINFO lpmi);
+
+    const uint MONITOR_DEFAULTTONULL = 0x00000000;
+    const uint MONITOR_DEFAULTTOPRIMARY = 0x00000001;
+    const uint MONITOR_DEFAULTTONEAREST = 0x00000002;
+
+    static void Main(string[] args)
+    {
+        // Variable zum Speichern der Mausposition
+        POINT point;
+        
+        // Mausposition abrufen
+        if (GetCursorPos(out point))
+        {
+            Console.WriteLine("Mausposition: X = {0}, Y = {1}", point.X, point.Y);
+
+            // Den Monitor identifizieren, auf dem sich die Maus befindet
+            IntPtr hMonitor = MonitorFromPoint(point, MONITOR_DEFAULTTONEAREST);
+            
+            if (hMonitor != IntPtr.Zero)
+            {
+                MONITORINFO monitorInfo = new MONITORINFO();
+
+                // Monitorinformationen abrufen
+                if (GetMonitorInfo(hMonitor, monitorInfo))
+                {
+                    // Berechnung der Mausposition relativ zum Monitor
+                    int monitorX = point.X - monitorInfo.rcMonitor.left;
+                    int monitorY = point.Y - monitorInfo.rcMonitor.top;
+
+                    Console.WriteLine("Monitorgröße: links = {0}, oben = {1}, rechts = {2}, unten = {3}",
+                                      monitorInfo.rcMonitor.left, monitorInfo.rcMonitor.top,
+                                      monitorInfo.rcMonitor.right, monitorInfo.rcMonitor.bottom);
+
+                    Console.WriteLine("Mausposition relativ zum Monitor: X = {0}, Y = {1}", monitorX, monitorY);
+                }
+            }
+            else
+            {
+                Console.WriteLine("Kein Monitor gefunden.");
+            }
+        }
+        else
+        {
+            Console.WriteLine("Fehler beim Abrufen der Mausposition.");
+        }
+    }
+}
