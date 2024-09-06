@@ -1,14 +1,13 @@
 using System;
 using System.Runtime.InteropServices;
-using System.Linq;
 
-class Program
+public class Hotkey
 {
-    // Windows API Methoden zum Registrieren/Deregistrieren von Hotkeys
-    [DllImport("user32.dll")]
+    // Windows API Funktionen für Hotkey-Management
+    [DllImport("user32.dll", SetLastError = true)]
     private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
 
-    [DllImport("user32.dll")]
+    [DllImport("user32.dll", SetLastError = true)]
     private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
 
     [DllImport("user32.dll")]
@@ -20,7 +19,7 @@ class Program
     [DllImport("user32.dll")]
     private static extern IntPtr DispatchMessage(ref MSG lpMsg);
 
-    // Strukturdarstellung einer Windows-Nachricht
+    // Struktur für Nachrichten aus der Windows-API
     [StructLayout(LayoutKind.Sequential)]
     private struct MSG
     {
@@ -39,7 +38,7 @@ class Program
         public int y;
     }
 
-    // Konstanten für Modifier-Keys
+    // Modifikator-Keys
     private const uint MOD_ALT = 0x0001;
     private const uint MOD_CONTROL = 0x0002;
     private const uint MOD_SHIFT = 0x0004;
@@ -47,50 +46,42 @@ class Program
 
     private const int WM_HOTKEY = 0x0312;
 
-    static void Main(string[] args)
+    // KeyMode Enum zur Unterscheidung von Key-Ereignissen
+    public enum KeyMode
     {
-        // Hotkey-IDs (beliebige eindeutige IDs)
-        const int HOTKEY_ID = 1;
-
-        // Beispiel: Byte-Werte für Ctrl + Alt + Shift + A
-        byte[] keys = new byte[] { (byte)ConsoleKey.LeftCtrl, (byte)ConsoleKey.LeftAlt, (byte)ConsoleKey.LeftShift, (byte)ConsoleKey.A };
-
-        // Hotkey registrieren basierend auf dem Array
-        if (!RegisterHotKeyFromArray(HOTKEY_ID, keys))
-        {
-            Console.WriteLine("Fehler beim Registrieren des Hotkeys.");
-            return;
-        }
-        Console.WriteLine("Hotkey registriert. Drücken Sie die Kombination.");
-
-        // Nachrichtenloop, um Hotkey-Ereignisse zu verarbeiten
-        MSG msg;
-        while (true)
-        {
-            // Auf eine Nachricht warten
-            GetMessage(out msg, IntPtr.Zero, 0, 0);
-
-            if (msg.message == WM_HOTKEY)
-            {
-                // Hotkey wurde gedrückt
-                if (msg.wParam.ToInt32() == HOTKEY_ID)
-                {
-                    Console.WriteLine("Hotkey wurde gedrückt!");
-                    PerformAction();
-                }
-            }
-
-            TranslateMessage(ref msg);
-            DispatchMessage(ref msg);
-        }
-
-        // Am Ende des Programms den Hotkey deregistrieren
-        UnregisterHotKey(IntPtr.Zero, HOTKEY_ID);
+        KeyDown,
+        KeyUp,
+        KeyPressed
     }
 
-    // Methode, um Hotkey basierend auf einem Array von Byte-Werten zu registrieren
-    static bool RegisterHotKeyFromArray(int id, byte[] keys)
+    // Eigenschaften der Hotkey-Klasse
+    private IntPtr windowHandle;
+    private int id;
+    private Action action;
+    private KeyMode keyMode;
+    private byte[] keys;
+    private bool isSubscribed;
+
+    // Konstruktor
+    public Hotkey(IntPtr handle, byte[] keys, KeyMode mode, Action action)
     {
+        this.windowHandle = handle;
+        this.keys = keys;
+        this.keyMode = mode;
+        this.action = action;
+        this.id = GetHashCode(); // Eindeutige ID auf Basis der Hotkey-Instanz
+
+        Subscribe();
+    }
+
+    // Registrierung des Hotkeys
+    private void Subscribe()
+    {
+        if (isSubscribed)
+        {
+            return;
+        }
+
         uint modifiers = 0;
         uint key = 0;
 
@@ -120,13 +111,81 @@ class Program
             }
         }
 
-        // Hotkey registrieren
-        return RegisterHotKey(IntPtr.Zero, id, modifiers, key);
+        // Registrierung des Hotkeys
+        if (!RegisterHotKey(windowHandle, id, modifiers, key))
+        {
+            throw new InvalidOperationException("Fehler beim Registrieren des Hotkeys.");
+        }
+
+        isSubscribed = true;
+        ListenForHotkey(); // Hotkey-Ereignisse anhören
     }
 
-    // Beispielaktion, die bei Hotkey-Druck ausgeführt wird
-    static void PerformAction()
+    // Methode zum Abhören von Hotkey-Ereignissen
+    private void ListenForHotkey()
     {
-        Console.WriteLine("Aktion wurde ausgeführt!");
+        MSG msg;
+        while (isSubscribed)
+        {
+            GetMessage(out msg, IntPtr.Zero, 0, 0);
+            if (msg.message == WM_HOTKEY && msg.wParam.ToInt32() == id)
+            {
+                HandleHotkeyEvent();
+            }
+            TranslateMessage(ref msg);
+            DispatchMessage(ref msg);
+        }
+    }
+
+    // Hotkey-Ereignis behandeln
+    private void HandleHotkeyEvent()
+    {
+        switch (keyMode)
+        {
+            case KeyMode.KeyDown:
+            case KeyMode.KeyUp:
+            case KeyMode.KeyPressed:
+                action?.Invoke(); // Aktion bei Hotkey-Druck ausführen
+                break;
+        }
+    }
+
+    // Hotkey deregistrieren
+    public void Unsubscribe()
+    {
+        if (isSubscribed)
+        {
+            UnregisterHotKey(windowHandle, id);
+            isSubscribed = false;
+        }
     }
 }
+
+class Program
+{
+    static void Main(string[] args)
+    {
+        // Beispiel: Hotkey Ctrl + Alt + A im gesamten System
+        var hk = new Hotkey(IntPtr.Zero, new byte[] { (byte)ConsoleKey.LeftCtrl, (byte)ConsoleKey.LeftAlt, (byte)ConsoleKey.A }, Hotkey.KeyMode.KeyPressed, () =>
+        {
+            Console.WriteLine("Hotkey Ctrl+Alt+A wurde gedrückt!");
+        });
+
+        Console.WriteLine("Drücken Sie Strg + Alt + A. Drücken Sie Enter, um das Programm zu beenden.");
+        Console.ReadLine();
+
+        // Hotkey deregistrieren
+        hk.Unsubscribe();
+    }
+}
+
+
+
+
+
+
+
+var hk = new Hotkey(IntPtr.Zero, new byte[] { (byte)ConsoleKey.LeftCtrl, (byte)ConsoleKey.LeftAlt, (byte)ConsoleKey.A }, Hotkey.KeyMode.KeyPressed, () =>
+{
+    Console.WriteLine("Hotkey Ctrl+Alt+A wurde gedrückt!");
+});
