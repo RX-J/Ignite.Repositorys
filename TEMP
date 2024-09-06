@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.InteropServices;
+using System.Linq;
 
 class Program
 {
@@ -51,17 +52,16 @@ class Program
         // Hotkey-IDs (beliebige eindeutige IDs)
         const int HOTKEY_ID = 1;
 
-        // Beispiel-Tasten für die Hotkey-Kombination: Ctrl + Shift + A
-        uint modifier = MOD_CONTROL | MOD_SHIFT;
-        uint key = (uint)ConsoleKey.A; // Die Taste A hat den virtuellen Keycode 0x41
+        // Beispiel: Byte-Werte für Ctrl + Alt + Shift + A
+        byte[] keys = new byte[] { (byte)ConsoleKey.LeftCtrl, (byte)ConsoleKey.LeftAlt, (byte)ConsoleKey.LeftShift, (byte)ConsoleKey.A };
 
-        // Hotkey registrieren
-        if (!RegisterHotKey(IntPtr.Zero, HOTKEY_ID, modifier, key))
+        // Hotkey registrieren basierend auf dem Array
+        if (!RegisterHotKeyFromArray(HOTKEY_ID, keys))
         {
             Console.WriteLine("Fehler beim Registrieren des Hotkeys.");
             return;
         }
-        Console.WriteLine("Hotkey Ctrl+Shift+A registriert. Drücken Sie die Kombination, um die Aktion auszuführen.");
+        Console.WriteLine("Hotkey registriert. Drücken Sie die Kombination.");
 
         // Nachrichtenloop, um Hotkey-Ereignisse zu verarbeiten
         MSG msg;
@@ -70,10 +70,12 @@ class Program
             // Auf eine Nachricht warten
             GetMessage(out msg, IntPtr.Zero, 0, 0);
 
-if (msg.wParam.ToInt32() == HOTKEY_ID)
+            if (msg.message == WM_HOTKEY)
+            {
+                // Hotkey wurde gedrückt
+                if (msg.wParam.ToInt32() == HOTKEY_ID)
                 {
-                    // Die Hotkey-Aktion wird hier ausgeführt
-                    Console.WriteLine("Hotkey Ctrl+Shift+A wurde gedrückt!");
+                    Console.WriteLine("Hotkey wurde gedrückt!");
                     PerformAction();
                 }
             }
@@ -84,6 +86,42 @@ if (msg.wParam.ToInt32() == HOTKEY_ID)
 
         // Am Ende des Programms den Hotkey deregistrieren
         UnregisterHotKey(IntPtr.Zero, HOTKEY_ID);
+    }
+
+    // Methode, um Hotkey basierend auf einem Array von Byte-Werten zu registrieren
+    static bool RegisterHotKeyFromArray(int id, byte[] keys)
+    {
+        uint modifiers = 0;
+        uint key = 0;
+
+        foreach (byte b in keys)
+        {
+            switch (b)
+            {
+                case (byte)ConsoleKey.LeftCtrl:
+                case (byte)ConsoleKey.RightCtrl:
+                    modifiers |= MOD_CONTROL;
+                    break;
+                case (byte)ConsoleKey.LeftAlt:
+                case (byte)ConsoleKey.RightAlt:
+                    modifiers |= MOD_ALT;
+                    break;
+                case (byte)ConsoleKey.LeftShift:
+                case (byte)ConsoleKey.RightShift:
+                    modifiers |= MOD_SHIFT;
+                    break;
+                case (byte)ConsoleKey.LWin:
+                case (byte)ConsoleKey.RWin:
+                    modifiers |= MOD_WIN;
+                    break;
+                default:
+                    key = b;
+                    break;
+            }
+        }
+
+        // Hotkey registrieren
+        return RegisterHotKey(IntPtr.Zero, id, modifiers, key);
     }
 
     // Beispielaktion, die bei Hotkey-Druck ausgeführt wird
