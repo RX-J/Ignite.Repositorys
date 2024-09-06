@@ -3,99 +3,92 @@ using System.Runtime.InteropServices;
 
 class Program
 {
-    // Struktur für die Koordinaten der Mausposition
+    // Windows API Methoden zum Registrieren/Deregistrieren von Hotkeys
+    [DllImport("user32.dll")]
+    private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
+
+    [DllImport("user32.dll")]
+    private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetMessage(out MSG lpMsg, IntPtr hWnd, uint wMsgFilterMin, uint wMsgFilterMax);
+
+    [DllImport("user32.dll")]
+    private static extern bool TranslateMessage(ref MSG lpMsg);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr DispatchMessage(ref MSG lpMsg);
+
+    // Strukturdarstellung einer Windows-Nachricht
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MSG
+    {
+        public IntPtr hwnd;
+        public uint message;
+        public IntPtr wParam;
+        public IntPtr lParam;
+        public uint time;
+        public POINT pt;
+    }
+
     [StructLayout(LayoutKind.Sequential)]
     public struct POINT
     {
-        public int X;
-        public int Y;
+        public int x;
+        public int y;
     }
 
-    // Struktur für Rechtecke (Monitorgrenzen)
-    [StructLayout(LayoutKind.Sequential)]
-    public struct RECT
-    {
-        public int left;
-        public int top;
-        public int right;
-        public int bottom;
-    }
+    // Konstanten für Modifier-Keys
+    private const uint MOD_ALT = 0x0001;
+    private const uint MOD_CONTROL = 0x0002;
+    private const uint MOD_SHIFT = 0x0004;
+    private const uint MOD_WIN = 0x0008;
 
-    // Struktur für Monitorinformationen
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
-    public class MONITORINFO
-    {
-        public int cbSize = Marshal.SizeOf(typeof(MONITORINFO));
-        public RECT rcMonitor = new RECT();
-        public RECT rcWork = new RECT();
-        public int dwFlags = 0;
-    }
-
-    // Delegat für die Monitorenumfunktion
-    public delegate bool MonitorEnumProc(IntPtr hMonitor, IntPtr hdcMonitor, ref RECT lprcMonitor, IntPtr dwData);
-
-    // Import der GetCursorPos-Funktion aus der User32.dll
-    [DllImport("user32.dll")]
-    public static extern bool GetCursorPos(out POINT lpPoint);
-
-    // Import der MonitorFromPoint-Funktion aus der User32.dll
-    [DllImport("user32.dll")]
-    public static extern IntPtr MonitorFromPoint(POINT pt, uint dwFlags);
-
-    // Import der GetMonitorInfo-Funktion aus der User32.dll
-    [DllImport("user32.dll", CharSet = CharSet.Auto)]
-    public static extern bool GetMonitorInfo(IntPtr hMonitor, MONITORINFO lpmi);
-
-    // Import der EnumDisplayMonitors-Funktion aus der User32.dll
-    [DllImport("user32.dll", CharSet = CharSet.Auto)]
-    public static extern bool EnumDisplayMonitors(IntPtr hdc, IntPtr lprcClip, MonitorEnumProc lpfnEnum, IntPtr dwData);
-
-    const uint MONITOR_DEFAULTTONEAREST = 0x00000002;
+    private const int WM_HOTKEY = 0x0312;
 
     static void Main(string[] args)
     {
-        // Variable zum Speichern der Mausposition
-        POINT point;
+        // Hotkey-IDs (beliebige eindeutige IDs)
+        const int HOTKEY_ID = 1;
 
-        // Mausposition abrufen
-        if (GetCursorPos(out point))
+        // Beispiel-Tasten für die Hotkey-Kombination: Ctrl + Shift + A
+        uint modifier = MOD_CONTROL | MOD_SHIFT;
+        uint key = (uint)ConsoleKey.A; // Die Taste A hat den virtuellen Keycode 0x41
+
+        // Hotkey registrieren
+        if (!RegisterHotKey(IntPtr.Zero, HOTKEY_ID, modifier, key))
         {
-            Console.WriteLine("Mausposition: X = {0}, Y = {1}", point.X, point.Y);
+            Console.WriteLine("Fehler beim Registrieren des Hotkeys.");
+            return;
+        }
+        Console.WriteLine("Hotkey Ctrl+Shift+A registriert. Drücken Sie die Kombination, um die Aktion auszuführen.");
 
-            // Monitore durchlaufen und herausfinden, auf welchem Monitor die Maus ist
-            int monitorIndex = 0;
-            bool found = false;
+        // Nachrichtenloop, um Hotkey-Ereignisse zu verarbeiten
+        MSG msg;
+        while (true)
+        {
+            // Auf eine Nachricht warten
+            GetMessage(out msg, IntPtr.Zero, 0, 0);
 
-            EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, (hMonitor, hdcMonitor, ref RECT lprcMonitor, IntPtr dwData) =>
-            {
-                monitorIndex++;
-                if (point.X >= lprcMonitor.left && point.X <= lprcMonitor.right &&
-                    point.Y >= lprcMonitor.top && point.Y <= lprcMonitor.bottom)
+if (msg.wParam.ToInt32() == HOTKEY_ID)
                 {
-                    // Monitorinformationen abrufen
-                    MONITORINFO monitorInfo = new MONITORINFO();
-                    GetMonitorInfo(hMonitor, monitorInfo);
-
-                    // Berechnung der relativen Mausposition auf dem Monitor
-                    int monitorX = point.X - monitorInfo.rcMonitor.left;
-                    int monitorY = point.Y - monitorInfo.rcMonitor.top;
-
-                    Console.WriteLine("Maus befindet sich auf Monitor Nr. {0} an Position X = {1}, Y = {2} relativ zum Monitor.",
-                                      monitorIndex, monitorX, monitorY);
-                    found = true;
-                    return false; // Beendet die Aufzählung, da wir den Monitor gefunden haben
+                    // Die Hotkey-Aktion wird hier ausgeführt
+                    Console.WriteLine("Hotkey Ctrl+Shift+A wurde gedrückt!");
+                    PerformAction();
                 }
-                return true; // Weiter mit dem nächsten Monitor
-            }, IntPtr.Zero);
-
-            if (!found)
-            {
-                Console.WriteLine("Kein Monitor gefunden, auf dem sich die Maus befindet.");
             }
+
+            TranslateMessage(ref msg);
+            DispatchMessage(ref msg);
         }
-        else
-        {
-            Console.WriteLine("Fehler beim Abrufen der Mausposition.");
-        }
+
+        // Am Ende des Programms den Hotkey deregistrieren
+        UnregisterHotKey(IntPtr.Zero, HOTKEY_ID);
+    }
+
+    // Beispielaktion, die bei Hotkey-Druck ausgeführt wird
+    static void PerformAction()
+    {
+        Console.WriteLine("Aktion wurde ausgeführt!");
     }
 }
